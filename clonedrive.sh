@@ -33,5 +33,5 @@ unionfs -o cow ${GOOGL_MOUNT}=RO:${MASTER_MOUNT}=RO:${CACHE_MOUNT}=RW ${UNION_MO
 # Ensure local cache to moved to The Cloud regularly
 while true; do
     cd ${CACHE_MOUNT} && rclone move . GoogleDriveCrypt:
-    sleep 21600 # 4 hours
+    sleep 21600 # 6 hours
 done
