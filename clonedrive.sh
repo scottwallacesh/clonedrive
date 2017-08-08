@@ -40,7 +40,9 @@ done &
 
 # Ensure local cache is moved to The Cloud regularly
 while true; do
-    cd ${CACHE_MOUNT} && rclone move . GoogleDriveCrypt: --bwlimit="07:00,1M 23:00,off"
+    cd ${CACHE_MOUNT}
+    rclone move . GoogleDriveCrypt: --bwlimit="07:00,1M 23:00,off"
+    find . -depth -type d -print0 | xargs -0 rmdir > /dev/null 2>&1
     sleep 21600 # 6 hours
 done
 
