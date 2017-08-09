@@ -48,7 +48,7 @@ def rclone_mounter(rclone_remote, directory):
             rclone = subprocess.Popen(['/usr/local/bin/rclone',
                                        'mount',
                                        '--read-only',
-                                       '--allow-others',
+                                       '--allow-other',
                                        '--no-modtime',
                                        '--dir-cache-time=10s',
                                        '--buffer-size=1G',
