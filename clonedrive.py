@@ -60,8 +60,8 @@ def rclone_mounter(rclone_remote, directory):
 
 def unionfs_mounter(sourcelist=[], directory=None):
     """Simple function to mount a unionfs 'stack'."""
-    source = ':'.join([directory + '=' + readwrite
-                          for (directory, readwrite) in sourcelist])
+    source = ':'.join([mount + '=' + readwrite
+                          for (mount, readwrite) in sourcelist])
 
     while True:
         unmount(directory)
