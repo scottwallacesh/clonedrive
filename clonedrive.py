@@ -3,7 +3,7 @@
 import subprocess
 import os
 import threading
-import ctypes.util
+import ctypes, ctypes.util
 import time
 
 def convert_sleeptime(timestring):
@@ -22,8 +22,9 @@ def convert_sleeptime(timestring):
 
 def unmount(directory):
     """Function to unmount a directory."""
-    libc = ctypes.util.find_library('c')
-    libc.umount(directory)
+    libc_path = ctypes.util.find_library('c')
+    libc = ctypes.CDLL(libc_path)
+    libc.unmount(directory)
 
 
 def directory_in_use(directory):
