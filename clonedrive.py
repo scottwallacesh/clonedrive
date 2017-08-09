@@ -118,7 +118,8 @@ if __name__ == '__main__':
     rclone_move = threading.Thread(target=rclone_mover,
                                    args=(cache_drive,
                                          remote_drive,
-                                         schedule='07:00,1M 23:00,off')
+                                         '6h',
+                                         '07:00,1M 23:00,off')
                                    )
 
     rclone_mount.start()
