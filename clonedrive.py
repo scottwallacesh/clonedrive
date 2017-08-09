@@ -5,6 +5,7 @@ import os
 import threading
 import ctypes, ctypes.util
 import time
+import sys
 
 def convert_sleeptime(timestring):
     """Function to convert a simply timespan string to number of seconds."""
