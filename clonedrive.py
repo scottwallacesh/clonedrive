@@ -78,8 +78,6 @@ def unionfs_mounter(sourcelist=[], directory=None):
 def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
     """Simple function to move directory contents to rclone remote."""
     while True:
-        os.chdir(directory)
-
         command = ['/usr/local/bin/rclone',
                    'move',
                    '.',
@@ -89,7 +87,7 @@ def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
         if schedule:
             command.append('--bwlimit=%s' % schedule)
 
-        rclone = subprocess.Popen(command)
+        rclone = subprocess.Popen(command, cwd=directory)
 
         rclone.wait()
 
