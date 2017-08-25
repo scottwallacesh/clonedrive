@@ -29,8 +29,7 @@ def unmount(directory):
 
 
 def directory_in_use(directory):
-    """Simple function to check if a directory
-       is in use."""
+    """Function to check if a directory is in use."""
     lsof = subprocess.Popen(['/usr/sbin/lsof', directory])
     lsof.wait()
 
@@ -41,7 +40,7 @@ def directory_in_use(directory):
 
 
 def rclone_mounter(rclone_remote, directory):
-    """Simple function to mount rclone remote."""
+    """Function to mount rclone remote."""
     while True:
         unmount(directory)
         if not directory_in_use(directory):
@@ -59,7 +58,7 @@ def rclone_mounter(rclone_remote, directory):
 
 
 def unionfs_mounter(sourcelist=[], directory=None):
-    """Simple function to mount a unionfs 'stack'."""
+    """Function to mount a unionfs 'stack'."""
     source = ':'.join([mount + '=' + readwrite
                           for (mount, readwrite) in sourcelist])
 
@@ -76,7 +75,7 @@ def unionfs_mounter(sourcelist=[], directory=None):
 
 
 def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
-    """Simple function to move directory contents to rclone remote."""
+    """Function to move cache directory contents to rclone remote."""
     while True:
         command = ['/usr/local/bin/rclone',
                    'move',
@@ -104,13 +103,13 @@ if __name__ == '__main__':
     rclone_mount = threading.Thread(target=rclone_mounter,
                                     args=(remote_drive, local_mount)
                                     )
-    
+
     unionfs_mount = threading.Thread(target=unionfs_mounter,
                                      args=([(local_mount, 'RO'),
                                             (master_mount, 'RO'),
                                             (cache_drive, 'RW')
                                             ],
-                                            union_mount)
+                                           union_mount)
                                      )
 
     rclone_move = threading.Thread(target=rclone_mover,
