@@ -129,4 +129,6 @@ if __name__ == '__main__':
                 if thread.is_alive():
                     thread.join(0.5)
     except KeyboardInterrupt:
+        unmount(union_mount)
+        unmount(local_mount)
         sys.exit(0)
