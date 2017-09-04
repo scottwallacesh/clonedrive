@@ -97,7 +97,6 @@ if __name__ == '__main__':
     remote_drive = 'GoogleDriveCrypt'
     local_mount = os.path.expanduser('~/mnt/GoogleDriveCrypt')
     cache_drive = os.path.expanduser('~/mnt/cache')
-    master_mount = os.path.expanduser('/Volumes/Downloads')
     union_mount = os.path.expanduser('~/mnt/union')
 
     rclone_mount = threading.Thread(target=rclone_mounter,
@@ -106,7 +105,6 @@ if __name__ == '__main__':
 
     unionfs_mount = threading.Thread(target=unionfs_mounter,
                                      args=([(local_mount, 'RO'),
-                                            (master_mount, 'RO'),
                                             (cache_drive, 'RW')
                                             ],
                                            union_mount)
