@@ -30,7 +30,7 @@ def unmount(directory):
 
 def directory_in_use(directory):
     """Function to check if a directory is in use."""
-    lsof = subprocess.Popen(['/usr/sbin/lsof', directory])
+    lsof = subprocess.Popen(['/usr/sbin/lsof', directory], stdout=None, stderr=None)
     lsof.wait()
 
     if lsof.returncode == 1:
