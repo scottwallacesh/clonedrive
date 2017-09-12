@@ -49,7 +49,9 @@ def rclone_mounter(rclone_remote, directory):
                                        '--read-only',
                                        '--allow-other',
                                        '--no-modtime',
-                                       '--dir-cache-time=10s',
+                                       '--dir-cache-time=240m',
+                                       '--tpslimit=10',
+                                       '--tpslimit-burst=1',
                                        '--buffer-size=1G',
                                        '%s:' % rclone_remote,
                                        directory
@@ -67,7 +69,7 @@ def unionfs_mounter(sourcelist=[], directory=None):
         if not directory_in_use(directory):        
             union = subprocess.Popen(['/usr/local/bin/unionfs',
                                       '-f',
-                                      '-o', 'cow',
+                                      '-o', 'cow,direct_io,auto_cache',
                                       source,
                                       directory
                                       ])
