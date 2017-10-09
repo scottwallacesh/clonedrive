@@ -3,9 +3,11 @@
 import subprocess
 import os
 import threading
-import ctypes, ctypes.util
+import ctypes
+import ctypes.util
 import time
 import sys
+
 
 def convert_sleeptime(timestring):
     """Function to convert a simply timespan string to number of seconds."""
@@ -30,7 +32,9 @@ def unmount(directory):
 
 def directory_in_use(directory):
     """Function to check if a directory is in use."""
-    lsof = subprocess.Popen(['/usr/sbin/lsof', directory], stdout=None, stderr=None)
+    lsof = subprocess.Popen(['/usr/sbin/lsof', directory],
+                            stdout=None,
+                            stderr=None)
     lsof.wait()
 
     if lsof.returncode == 1:
@@ -62,11 +66,11 @@ def rclone_mounter(rclone_remote, directory):
 def unionfs_mounter(sourcelist=[], directory=None):
     """Function to mount a unionfs 'stack'."""
     source = ':'.join([mount + '=' + readwrite
-                          for (mount, readwrite) in sourcelist])
+                      for (mount, readwrite) in sourcelist])
 
     while True:
         unmount(directory)
-        if not directory_in_use(directory):        
+        if not directory_in_use(directory):
             union = subprocess.Popen(['/usr/local/bin/unionfs',
                                       '-f',
                                       '-o', 'cow,direct_io,auto_cache',
