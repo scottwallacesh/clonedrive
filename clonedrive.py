@@ -106,8 +106,8 @@ if __name__ == '__main__':
                                     )
 
     unionfs_mount = threading.Thread(target=unionfs_mounter,
-                                     args=([(local_mount, 'RO'),
-                                            (cache_drive, 'RW')
+                                     args=([(cache_drive, 'RW'),
+                                            (local_mount, 'RO')
                                             ],
                                            union_mount)
                                      )
