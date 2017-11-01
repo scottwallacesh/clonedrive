@@ -86,7 +86,8 @@ def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
         command = ['/usr/local/bin/rclone',
                    'move',
                    '.',
-                   '%s:' % rclone_remote
+                   '%s:' % rclone_remote,
+                   '--exclude=.unionfs'
                    ]
 
         if schedule:
