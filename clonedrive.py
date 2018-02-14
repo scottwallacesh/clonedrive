@@ -2,7 +2,7 @@
 
 import subprocess
 import os
-import threading
+from multiprocessing import Process, Pipe
 import ctypes
 import ctypes.util
 import time
@@ -25,14 +25,16 @@ def convert_sleeptime(timestring):
 
 def unmount(directory):
     """Function to unmount a directory."""
-    libc_path = ctypes.util.find_library('c')
-    libc = ctypes.CDLL(libc_path)
-    libc.unmount(directory)
+    umounter = subprocess.Popen(['/usr/bin/sudo',
+                                 '/usr/bin/umount',
+                                 directory
+                                 ])
+    umounter.wait()
 
 
 def directory_in_use(directory):
     """Function to check if a directory is in use."""
-    lsof = subprocess.Popen(['/usr/sbin/lsof', directory],
+    lsof = subprocess.Popen(['/sbin/lsof', directory],
                             stdout=None,
                             stderr=None)
     lsof.wait()
@@ -43,12 +45,16 @@ def directory_in_use(directory):
         return True
 
 
-def rclone_mounter(rclone_remote, directory):
+def rclone_mounter(rclone_remote, directory, pipe):
     """Function to mount rclone remote."""
+    homedir = os.path.expanduser('~')
+    rclone_bin = os.path.join(homedir, 'bin', 'rclone')
     while True:
+        # Umount the existing directory, just in case
         unmount(directory)
         if not directory_in_use(directory):
-            rclone = subprocess.Popen(['/usr/local/bin/rclone',
+            # Mount it
+            rclone = subprocess.Popen([rclone_bin,
                                        'mount',
                                        '--read-only',
                                        '--allow-other',
@@ -60,80 +66,103 @@ def rclone_mounter(rclone_remote, directory):
                                        '%s:' % rclone_remote,
                                        directory
                                        ])
+
+            # Wait a few seconds for the mount to complete
+            time.sleep(3)
+
+            # Send a signal to the overlay_mounter thread
+            pipe.send(True)
+
+            # Wait for rclone to exit
             rclone.wait()
 
 
-def unionfs_mounter(sourcelist=[], directory=None):
-    """Function to mount a unionfs 'stack'."""
-    source = ':'.join([mount + '=' + readwrite
-                      for (mount, readwrite) in sourcelist])
-
+def overlay_mounter(directory, pipe):
+    """Function to mount a overlay 'stack'."""
     while True:
-        unmount(directory)
-        if not directory_in_use(directory):
-            union = subprocess.Popen(['/usr/local/bin/unionfs',
-                                      '-f',
-                                      '-o', 'cow,direct_io,auto_cache',
-                                      source,
-                                      directory
-                                      ])
-            union.wait()
+        # Wait for a signal from the rclone_mounter thread
+        if pipe.recv() == True:
+            # Umount the existing directory, just in case
+            unmount(directory)
+            if not directory_in_use(directory):
+                # Mount it
+                union = subprocess.Popen(['/usr/bin/sudo',
+                                          '/usr/bin/mount',
+                                          directory
+                                          ])
 
 
 def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
     """Function to move cache directory contents to rclone remote."""
+    homedir = os.path.expanduser('~')
+    rclone_bin = os.path.join(homedir, 'bin', 'rclone')
     while True:
-        command = ['/usr/local/bin/rclone',
+        # Build the command line
+        command = [rclone_bin,
                    'move',
                    '.',
                    '%s:' % rclone_remote,
                    '--exclude=.unionfs'
                    ]
 
+        # Append the schedule, if appropriate
         if schedule:
             command.append('--bwlimit=%s' % schedule)
 
+        # Run the command
         rclone = subprocess.Popen(command, cwd=directory)
-
         rclone.wait()
 
+        # Sleep until the next schedule
         time.sleep(convert_sleeptime(sleeptime))
 
 
 if __name__ == '__main__':
+    # Main directories
     remote_drive = 'GoogleDriveCrypt'
-    local_mount = os.path.expanduser('~/mnt/GoogleDriveCrypt')
-    cache_drive = os.path.expanduser('~/mnt/cache')
-    union_mount = os.path.expanduser('~/mnt/union')
+    homedir = os.path.expanduser('~')
+    local_dir = os.path.join(homedir, 'mnt', 'GoogleDriveCrypt')
+    overlay_dir = os.path.join(homedir, 'mnt', 'union')
+    cache_dir = os.path.join(homedir, 'mnt', 'cache')
 
-    rclone_mount = threading.Thread(target=rclone_mounter,
-                                    args=(remote_drive, local_mount)
-                                    )
+    # Create a cross-thread pipe
+    rclone_pipe, overlay_pipe = Pipe()
 
-    unionfs_mount = threading.Thread(target=unionfs_mounter,
-                                     args=([(cache_drive, 'RW'),
-                                            (local_mount, 'RO')
-                                            ],
-                                           union_mount)
-                                     )
+    # Prepare the threads
+    rclone_mount = Process(target=rclone_mounter,
+                           args=(remote_drive, local_dir, rclone_pipe)
+                           )
 
-    rclone_move = threading.Thread(target=rclone_mover,
-                                   args=(cache_drive,
-                                         remote_drive,
-                                         '6h',
-                                         '07:00,1M 23:00,off')
-                                   )
+    overlay_mount = Process(target=overlay_mounter,
+                            args=(overlay_dir, overlay_pipe)
+                            )
 
+    rclone_move = Process(target=rclone_mover,
+                          args=(cache_dir,
+                                remote_drive,
+                                '6h',
+                                '07:00,1M 23:00,off')
+                          )
+
+    # Start the threads
     rclone_mount.start()
-    unionfs_mount.start()
+    overlay_mount.start()
     rclone_move.start()
 
+    # Wait for a keyboard interrupt
     try:
         while True:
-            for thread in [rclone_mount, unionfs_mount, rclone_move]:
+            for thread in [rclone_mount, overlay_mount, rclone_move]:
                 if thread.is_alive():
                     thread.join(0.5)
     except KeyboardInterrupt:
-        unmount(union_mount)
-        unmount(local_mount)
+        # Kill the threads
+        overlay_mount.terminate()
+        rclone_mount.terminate()
+
+        # Umount the filesystems
+        unmount(overlay_dir)
+        unmount(local_dir)
+
+        # Clean exit
         sys.exit(0)
