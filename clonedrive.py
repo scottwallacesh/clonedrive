@@ -7,6 +7,22 @@ import ctypes
 import ctypes.util
 import time
 import sys
+import platform
+
+
+if platform.system() == 'Linux':
+    MOUNT_BIN = '/usr/bin/mount'
+    UMOUNT_BIN = '/usr/bin/umount'
+    SUDO_BIN = '/usr/bin/sudo'
+    LSOF_BIN = '/sbin/lsof'
+    RCLONE_BIN = os.path.expanduser('~/bin/rclone')
+
+if platform.system() == 'Darwin':
+    MOUNT_BIN = '/sbin/mount'
+    UMOUNT_BIN = '/sbin/umount'
+    SUDO_BIN = '/usr/bin/sudo'
+    LSOF_BIN = '/usr/sbin/lsof'
+    RCLONE_BIN = '/usr/local/bin/rclone'
 
 
 def convert_sleeptime(timestring):
@@ -25,8 +41,9 @@ def convert_sleeptime(timestring):
 
 def unmount(directory):
     """Function to unmount a directory."""
-    umounter = subprocess.Popen(['/usr/bin/sudo',
-                                 '/usr/bin/umount',
+
+    umounter = subprocess.Popen([SUDO_BIN,
+                                 MOUNT_BIN,
                                  directory
                                  ])
     umounter.wait()
@@ -34,7 +51,8 @@ def unmount(directory):
 
 def directory_in_use(directory):
     """Function to check if a directory is in use."""
-    lsof = subprocess.Popen(['/sbin/lsof', directory],
+
+    lsof = subprocess.Popen([LSOF_BIN, directory],
                             stdout=None,
                             stderr=None)
     lsof.wait()
@@ -47,14 +65,12 @@ def directory_in_use(directory):
 
 def rclone_mounter(rclone_remote, directory, pipe):
     """Function to mount rclone remote."""
-    homedir = os.path.expanduser('~')
-    rclone_bin = os.path.join(homedir, 'bin', 'rclone')
     while True:
         # Umount the existing directory, just in case
         unmount(directory)
         if not directory_in_use(directory):
             # Mount it
-            rclone = subprocess.Popen([rclone_bin,
+            rclone = subprocess.Popen([RCLONE_BIN,
                                        'mount',
                                        '--read-only',
                                        '--allow-other',
@@ -77,28 +93,42 @@ def rclone_mounter(rclone_remote, directory, pipe):
             rclone.wait()
 
 
+def unionfs_mounter(sourcelist=[], directory=None, pipe):
+    """Function to mount a unionfs 'stack'."""
+    source = ':'.join([mount + '=' + readwrite
+                      for (mount, readwrite) in sourcelist])
+
+    while True:
+        if pipe.recv() is True:
+            unmount(directory)
+            if not directory_in_use(directory):
+                union = subprocess.Popen(['/usr/local/bin/unionfs',
+                                          '-o', 'cow,direct_io,auto_cache',
+                                          source,
+                                          directory
+                                          ])
+
+
 def overlay_mounter(directory, pipe):
     """Function to mount a overlay 'stack'."""
     while True:
         # Wait for a signal from the rclone_mounter thread
-        if pipe.recv() == True:
+        if pipe.recv() is True:
             # Umount the existing directory, just in case
             unmount(directory)
             if not directory_in_use(directory):
                 # Mount it
-                union = subprocess.Popen(['/usr/bin/sudo',
-                                          '/usr/bin/mount',
+                union = subprocess.Popen([SUDO_BIN,
+                                          MOUNT_BIN,
                                           directory
                                           ])
 
 
 def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
     """Function to move cache directory contents to rclone remote."""
-    homedir = os.path.expanduser('~')
-    rclone_bin = os.path.join(homedir, 'bin', 'rclone')
     while True:
         # Build the command line
-        command = [rclone_bin,
+        command = [RCLONE_BIN,
                    'move',
                    '.',
                    '%s:' % rclone_remote,
@@ -133,9 +163,18 @@ if __name__ == '__main__':
                            args=(remote_drive, local_dir, rclone_pipe)
                            )
 
-    overlay_mount = Process(target=overlay_mounter,
-                            args=(overlay_dir, overlay_pipe)
-                            )
+    if platform.system() == 'Linux':
+        overlay_mount = Process(target=overlay_mounter,
+                                args=(overlay_dir, overlay_pipe)
+                                )
+
+    if platform.system() == 'Darwin':
+        overlay_mount = Process(target=unionfs_mounter,
+                                args=([(cache_dir, 'RW'),
+                                       (local_dir, 'RO')
+                                       ],
+                                      overlay_dir, overlay_pipe)
+                                )
 
     rclone_move = Process(target=rclone_mover,
                           args=(cache_dir,
