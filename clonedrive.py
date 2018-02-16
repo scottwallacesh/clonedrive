@@ -3,8 +3,6 @@
 import subprocess
 import os
 from multiprocessing import Process, Pipe
-import ctypes
-import ctypes.util
 import time
 import sys
 import platform
