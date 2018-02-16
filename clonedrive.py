@@ -32,7 +32,6 @@ def convert_sleeptime(timestring):
             return int(timestring[:-1]) * seconds_per_unit[timestring[-1]]
         except KeyError:
             raise
-            return None
 
 
 def unmount(directory):
@@ -73,8 +72,7 @@ def rclone_mounter(rclone_remote, directory, pipe):
                                        '--tpslimit-burst=1',
                                        '--buffer-size=1G',
                                        '%s:' % rclone_remote,
-                                       directory
-                                       ])
+                                       directory])
 
             # Wait a few seconds for the mount to complete
             time.sleep(3)
@@ -89,7 +87,7 @@ def rclone_mounter(rclone_remote, directory, pipe):
 def unionfs_mounter(sourcelist, directory, pipe):
     """Function to mount a unionfs 'stack'."""
     source = ':'.join([mount + '=' + readwrite
-                      for (mount, readwrite) in sourcelist])
+                       for (mount, readwrite) in sourcelist])
 
     while True:
         if pipe.recv() is True:
@@ -98,8 +96,7 @@ def unionfs_mounter(sourcelist, directory, pipe):
                 subprocess.Popen(['/usr/local/bin/unionfs',
                                   '-o', 'cow,direct_io,auto_cache',
                                   source,
-                                  directory
-                                  ])
+                                  directory])
 
 
 def overlay_mounter(directory, pipe):
@@ -122,8 +119,7 @@ def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
                    'move',
                    '.',
                    '%s:' % rclone_remote,
-                   '--exclude=.unionfs'
-                   ]
+                   '--exclude=.unionfs']
 
         # Append the schedule, if appropriate
         if schedule:
@@ -150,28 +146,23 @@ if __name__ == '__main__':
 
     # Prepare the threads
     rclone_mount = Process(target=rclone_mounter,
-                           args=(remote_drive, local_dir, rclone_pipe)
-                           )
+                           args=(remote_drive, local_dir, rclone_pipe))
 
     if platform.system() == 'Linux':
         overlay_mount = Process(target=overlay_mounter,
-                                args=(overlay_dir, overlay_pipe)
-                                )
+                                args=(overlay_dir, overlay_pipe))
 
     if platform.system() == 'Darwin':
         overlay_mount = Process(target=unionfs_mounter,
                                 args=([(cache_dir, 'RW'),
-                                       (local_dir, 'RO')
-                                       ],
-                                      overlay_dir, overlay_pipe)
-                                )
+                                       (local_dir, 'RO')],
+                                      overlay_dir, overlay_pipe))
 
     rclone_move = Process(target=rclone_mover,
                           args=(cache_dir,
                                 remote_drive,
                                 '6h',
-                                '07:00,1M 23:00,off')
-                          )
+                                '07:00,1M 23:00,off'))
 
     # Start the threads
     rclone_mount.start()
