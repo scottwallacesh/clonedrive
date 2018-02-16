@@ -11,16 +11,14 @@ import platform
 
 
 if platform.system() == 'Linux':
-    MOUNT_BIN = '/usr/bin/mount'
-    UMOUNT_BIN = '/usr/bin/umount'
-    SUDO_BIN = '/usr/bin/sudo'
+    MOUNT_BIN = ['/usr/bin/sudo', '/usr/bin/mount']
+    UMOUNT_BIN = ['/usr/bin/sudo', '/usr/bin/umount']
     LSOF_BIN = '/sbin/lsof'
     RCLONE_BIN = os.path.expanduser('~/bin/rclone')
 
 if platform.system() == 'Darwin':
-    MOUNT_BIN = '/sbin/mount'
-    UMOUNT_BIN = '/sbin/umount'
-    SUDO_BIN = '/usr/bin/sudo'
+    MOUNT_BIN = ['/sbin/mount']
+    UMOUNT_BIN = ['/usr/sbin/diskutil', 'unmount']
     LSOF_BIN = '/usr/sbin/lsof'
     RCLONE_BIN = '/usr/local/bin/rclone'
 
@@ -42,10 +40,7 @@ def convert_sleeptime(timestring):
 def unmount(directory):
     """Function to unmount a directory."""
 
-    umounter = subprocess.Popen([SUDO_BIN,
-                                 MOUNT_BIN,
-                                 directory
-                                 ])
+    umounter = subprocess.Popen(UMOUNT_BIN + [directory])
     umounter.wait()
 
 
@@ -93,7 +88,7 @@ def rclone_mounter(rclone_remote, directory, pipe):
             rclone.wait()
 
 
-def unionfs_mounter(sourcelist=[], directory=None, pipe):
+def unionfs_mounter(sourcelist, directory, pipe):
     """Function to mount a unionfs 'stack'."""
     source = ':'.join([mount + '=' + readwrite
                       for (mount, readwrite) in sourcelist])
@@ -102,11 +97,11 @@ def unionfs_mounter(sourcelist=[], directory=None, pipe):
         if pipe.recv() is True:
             unmount(directory)
             if not directory_in_use(directory):
-                union = subprocess.Popen(['/usr/local/bin/unionfs',
-                                          '-o', 'cow,direct_io,auto_cache',
-                                          source,
-                                          directory
-                                          ])
+                subprocess.Popen(['/usr/local/bin/unionfs',
+                                  '-o', 'cow,direct_io,auto_cache',
+                                  source,
+                                  directory
+                                  ])
 
 
 def overlay_mounter(directory, pipe):
@@ -118,10 +113,7 @@ def overlay_mounter(directory, pipe):
             unmount(directory)
             if not directory_in_use(directory):
                 # Mount it
-                union = subprocess.Popen([SUDO_BIN,
-                                          MOUNT_BIN,
-                                          directory
-                                          ])
+                subprocess.Popen(MOUNT_BIN + [directory])
 
 
 def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
@@ -196,8 +188,14 @@ if __name__ == '__main__':
                     thread.join(0.5)
     except KeyboardInterrupt:
         # Kill the threads
+        rclone_move.terminate()
         overlay_mount.terminate()
         rclone_mount.terminate()
+
+        # Wait for the threads
+        rclone_move.join()
+        overlay_mount.join()
+        rclone_mount.join()
 
         # Umount the filesystems
         unmount(overlay_dir)
