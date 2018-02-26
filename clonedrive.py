@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+""" Script to mount a read-only, encrypted Google Drive with a read-write,
+    local cache for use with something like Plex.
+"""
+
 import subprocess
 import os
 from multiprocessing import Process, Pipe
@@ -24,8 +28,8 @@ def convert_sleeptime(timestring):
 
 
 class Mounter(object):
-    """ Super-class for mounting filesystems. """
-    def __init__(self, source, mount_point, pipe=None):
+    """ Class for mounting filesystems. """
+    def __init__(self, src, dst, pipe=None):
         """ Initialisation method for the class.
             Determine the OS and configure a few (hardcoded!) paths.
         """
@@ -41,25 +45,28 @@ class Mounter(object):
             self.lsof_bin = '/usr/sbin/lsof'
             self.rclone_bin = '/usr/local/bin/rclone'
 
-        self.source = source
-        self.mount_point = mount_point
+        self.source = src
+        self.mount_point = dst
         self.command = None
 
         if pipe is not None:
             # Use the given pipe, we must be an overlay FS
+            self.parent_pipe = None
             self.child_pipe = pipe
-            self.overlay = True
         else:
             # Create a pipe for signalling to the overlay
             # that the mount is ready to be overlaid.
             self.parent_pipe, self.child_pipe = Pipe()
-            self.overlay = False
+
+    def set_command(self, command):
+        """ Setter method. """
+        self.command = command
 
     def mount(self):
         """ Method to mount the filesystem. """
         while True:
             # Only wait for signal if we're the overlay
-            if self.overlay is True:
+            if self.parent_pipe is None:
                 # Any signal will do
                 self.child_pipe.recv()
 
@@ -69,16 +76,21 @@ class Mounter(object):
             # Check the mountpoint isn't being used
             if not self.in_use():
                 try:
+                    # Ensure the command is legit
+                    command = filter(None,
+                                     self.command +
+                                     [self.source, self.mount_point])
+
                     # Mount the mountpoint
-                    mount = subprocess.Popen(self.command +
-                                             [self.source,
-                                              self.mount_point])
+                    mount = subprocess.Popen(command,
+                                             stdout=subprocess.PIPE,
+                                             stderr=subprocess.PIPE)
 
                     # Wait a few seconds
                     time.sleep(3)
 
                     # Send a signal if we're not the overlay
-                    if self.overlay is False:
+                    if self.parent_pipe is not None:
                         self.parent_pipe.send(True)
 
                     # Wait until the mount stops
@@ -89,7 +101,9 @@ class Mounter(object):
 
     def unmount(self):
         """ Method to unmount. """
-        unmounter = subprocess.Popen(self.umount_bin + [self.mount_point])
+        unmounter = subprocess.Popen(self.umount_bin + [self.mount_point],
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
         unmounter.wait()
 
     def in_use(self):
@@ -98,7 +112,7 @@ class Mounter(object):
             lsof = subprocess.Popen([self.lsof_bin, self.mount_point],
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE)
-        except Exception, errmsg:
+        except OSError, errmsg:
             print '%s: %s' % (errmsg, lsof.stderr.read())
             return None
 
@@ -110,34 +124,37 @@ class Mounter(object):
             return True
 
 
-class Rclone_mounter(Mounter):
+class RcloneMounter(Mounter):
     """ Class for mounting rclone filesystems. """
     def __init__(self, *args, **kwargs):
-        super(Rclone_mounter, self).__init__(*args, **kwargs)
-        self.command = [self.rclone_bin,
-                        'mount',
-                        '--read-only',
-                        '--allow-other',
-                        '--no-modtime',
-                        '--dir-cache-time=240m',
-                        '--tpslimit=10',
-                        '--tpslimit-burst=1',
-                        '--buffer-size=1G']
+        super(RcloneMounter, self).__init__(*args, **kwargs)
+        self.set_command([self.rclone_bin,
+                          'mount',
+                          '--read-only',
+                          '--allow-other',
+                          '--no-modtime',
+                          '--dir-cache-time=240m',
+                          '--tpslimit=10',
+                          '--tpslimit-burst=1',
+                          '--buffer-size=1G'])
+
+        # Append a colon to the source
+        self.source += ':'
 
 
-class Unionfs_mounter(Mounter):
+class UnionfsMounter(Mounter):
     """ Class for mounting union filesystems. """
     def __init__(self, *args, **kwargs):
-        super(Unionfs_mounter, self).__init__(*args, **kwargs)
-        self.command = ['/usr/local/bin/unionfs',
-                        '-o', 'cow,direct_io,auto_cache']
+        super(UnionfsMounter, self).__init__(*args, **kwargs)
+        self.set_command(['/usr/local/bin/unionfs',
+                          '-o', 'cow,direct_io,auto_cache'])
 
 
-class Overlay_mounter(Mounter):
+class OverlayMounter(Mounter):
     """ Class for mounting overlayfs filesystems. """
     def __init__(self, *args, **kwargs):
-        super(Overlay_mounter, self).__init__(*args, **kwargs)
-        self.command = [self.mount_bin]
+        super(OverlayMounter, self).__init__(*args, **kwargs)
+        self.set_command(self.mount_bin)
 
 
 def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
@@ -150,25 +167,30 @@ def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
                    '.',
                    '%s:' % rclone_remote,
                    '--exclude=.unionfs']
-    
+
         # Append the schedule, if appropriate
         if schedule:
             command.append('--bwlimit=%s' % schedule)
 
         # Run the command
         try:
-            rclone = subprocess.Popen(command, cwd=directory)
+            move = subprocess.Popen(command,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE,
+                                    cwd=directory)
         except OSError, errmsg:
             print '%s: %s' % (directory, errmsg)
             break
 
-        rclone.wait()
+        move.wait()
 
         # Sleep until the next schedule
         time.sleep(convert_sleeptime(sleeptime))
 
 
-if __name__ == '__main__':
+def main():
+    """ Function to call the main programm logic. """
+
     # Main directories
     remote_drive = 'GoogleDriveCrypt'
     homedir = os.path.expanduser('~')
@@ -177,17 +199,17 @@ if __name__ == '__main__':
     cache_dir = os.path.join(homedir, 'mnt', 'cache')
 
     # Rclone mounter
-    rclone = Rclone_mounter(remote_drive, local_dir)
+    rclone = RcloneMounter(remote_drive, local_dir)
 
     # Overlay mounter
     if platform.system() == 'Linux':
-        overlay = Overlay_mounter('', overlay_dir, rclone.child_pipe)
+        overlay = OverlayMounter(None, overlay_dir, rclone.child_pipe)
 
     if platform.system() == 'Darwin':
         source = '%s=%s:%s=%s' % (cache_dir, 'RW',
                                   local_dir, 'RO')
 
-        overlay = Unionfs_mounter(source, overlay_dir, rclone.child_pipe)
+        overlay = UnionfsMounter(source, overlay_dir, rclone.child_pipe)
 
     # Prepare the threads
     rclone_mount = Process(target=rclone.mount)
@@ -198,13 +220,13 @@ if __name__ == '__main__':
                                 '6h',
                                 '07:00,1M 23:00,off'))
 
-    # Start the threads
-    rclone_mount.start()
-    overlay_mount.start()
-    rclone_move.start()
-
     # Wait for a keyboard interrupt
     try:
+        # Start the threads
+        rclone_mount.start()
+        overlay_mount.start()
+        rclone_move.start()
+
         while True:
             for thread in [rclone_mount, overlay_mount, rclone_move]:
                 if thread.is_alive():
@@ -224,5 +246,9 @@ if __name__ == '__main__':
         overlay.unmount()
         rclone.unmount()
 
-        # Clean exit
-        sys.exit(0)
+
+if __name__ == '__main__':
+    main()
+
+    # Clean exit
+    sys.exit(0)
