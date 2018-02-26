@@ -8,125 +8,160 @@ import sys
 import platform
 
 
-if platform.system() == 'Linux':
-    MOUNT_BIN = ['/usr/bin/sudo', '/usr/bin/mount']
-    UMOUNT_BIN = ['/usr/bin/sudo', '/usr/bin/umount']
-    LSOF_BIN = '/sbin/lsof'
-    RCLONE_BIN = os.path.expanduser('~/bin/rclone')
-
-if platform.system() == 'Darwin':
-    MOUNT_BIN = ['/sbin/mount']
-    UMOUNT_BIN = ['/usr/sbin/diskutil', 'unmount']
-    LSOF_BIN = '/usr/sbin/lsof'
-    RCLONE_BIN = '/usr/local/bin/rclone'
-
-
 def convert_sleeptime(timestring):
     """Function to convert a simply timespan string to number of seconds."""
     seconds_per_unit = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
 
     try:
+        # Return an integer, if possible
         return int(timestring)
     except ValueError:
+        # Otherwise try to convert the provided string
         try:
             return int(timestring[:-1]) * seconds_per_unit[timestring[-1]]
         except KeyError:
             raise
 
 
-def unmount(directory):
-    """Function to unmount a directory."""
+class Mounter(object):
+    """ Super-class for mounting filesystems. """
+    def __init__(self, source, mount_point, pipe=None):
+        """ Initialisation method for the class.
+            Determine the OS and configure a few (hardcoded!) paths.
+        """
+        if platform.system() == 'Linux':
+            self.mount_bin = ['/usr/bin/sudo', '/usr/bin/mount']
+            self.umount_bin = ['/usr/bin/sudo', '/usr/bin/umount']
+            self.lsof_bin = '/sbin/lsof'
+            self.rclone_bin = os.path.expanduser('~/bin/rclone')
 
-    umounter = subprocess.Popen(UMOUNT_BIN + [directory])
-    umounter.wait()
+        if platform.system() == 'Darwin':
+            self.mount_bin = ['/sbin/mount']
+            self.umount_bin = ['/usr/sbin/diskutil', 'unmount']
+            self.lsof_bin = '/usr/sbin/lsof'
+            self.rclone_bin = '/usr/local/bin/rclone'
+
+        self.source = source
+        self.mount_point = mount_point
+        self.command = None
+
+        if pipe is not None:
+            # Use the given pipe, we must be an overlay FS
+            self.child_pipe = pipe
+            self.overlay = True
+        else:
+            # Create a pipe for signalling to the overlay
+            # that the mount is ready to be overlaid.
+            self.parent_pipe, self.child_pipe = Pipe()
+            self.overlay = False
+
+    def mount(self):
+        """ Method to mount the filesystem. """
+        while True:
+            # Only wait for signal if we're the overlay
+            if self.overlay is True:
+                # Any signal will do
+                self.child_pipe.recv()
+
+            # Unmount, to be safe
+            self.unmount()
+
+            # Check the mountpoint isn't being used
+            if not self.in_use():
+                try:
+                    # Mount the mountpoint
+                    mount = subprocess.Popen(self.command +
+                                             [self.source,
+                                              self.mount_point])
+
+                    # Wait a few seconds
+                    time.sleep(3)
+
+                    # Send a signal if we're not the overlay
+                    if self.overlay is False:
+                        self.parent_pipe.send(True)
+
+                    # Wait until the mount stops
+                    mount.wait()
+                except OSError, errmsg:
+                    print '%s: %s' % (self.command[0], errmsg)
+                    break
+
+    def unmount(self):
+        """ Method to unmount. """
+        unmounter = subprocess.Popen(self.umount_bin + [self.mount_point])
+        unmounter.wait()
+
+    def in_use(self):
+        """Method to check if a directory is in use."""
+        try:
+            lsof = subprocess.Popen([self.lsof_bin, self.mount_point],
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+        except Exception, errmsg:
+            print '%s: %s' % (errmsg, lsof.stderr.read())
+            return None
+
+        lsof.wait()
+
+        if lsof.returncode == 1:
+            return False
+        else:
+            return True
 
 
-def directory_in_use(directory):
-    """Function to check if a directory is in use."""
-
-    lsof = subprocess.Popen([LSOF_BIN, directory],
-                            stdout=None,
-                            stderr=None)
-    lsof.wait()
-
-    if lsof.returncode == 1:
-        return False
-    else:
-        return True
-
-
-def rclone_mounter(rclone_remote, directory, pipe):
-    """Function to mount rclone remote."""
-    while True:
-        # Umount the existing directory, just in case
-        unmount(directory)
-        if not directory_in_use(directory):
-            # Mount it
-            rclone = subprocess.Popen([RCLONE_BIN,
-                                       'mount',
-                                       '--read-only',
-                                       '--allow-other',
-                                       '--no-modtime',
-                                       '--dir-cache-time=240m',
-                                       '--tpslimit=10',
-                                       '--tpslimit-burst=1',
-                                       '--buffer-size=1G',
-                                       '%s:' % rclone_remote,
-                                       directory])
-
-            # Wait a few seconds for the mount to complete
-            time.sleep(3)
-
-            # Send a signal to the overlay_mounter thread
-            pipe.send(True)
-
-            # Wait for rclone to exit
-            rclone.wait()
+class Rclone_mounter(Mounter):
+    """ Class for mounting rclone filesystems. """
+    def __init__(self, *args, **kwargs):
+        super(Rclone_mounter, self).__init__(*args, **kwargs)
+        self.command = [self.rclone_bin,
+                        'mount',
+                        '--read-only',
+                        '--allow-other',
+                        '--no-modtime',
+                        '--dir-cache-time=240m',
+                        '--tpslimit=10',
+                        '--tpslimit-burst=1',
+                        '--buffer-size=1G']
 
 
-def unionfs_mounter(sourcelist, directory, pipe):
-    """Function to mount a unionfs 'stack'."""
-    source = ':'.join([mount + '=' + readwrite
-                       for (mount, readwrite) in sourcelist])
-
-    while True:
-        if pipe.recv() is True:
-            unmount(directory)
-            if not directory_in_use(directory):
-                subprocess.Popen(['/usr/local/bin/unionfs',
-                                  '-o', 'cow,direct_io,auto_cache',
-                                  source,
-                                  directory])
+class Unionfs_mounter(Mounter):
+    """ Class for mounting union filesystems. """
+    def __init__(self, *args, **kwargs):
+        super(Unionfs_mounter, self).__init__(*args, **kwargs)
+        self.command = ['/usr/local/bin/unionfs',
+                        '-o', 'cow,direct_io,auto_cache']
 
 
-def overlay_mounter(directory, pipe):
-    """Function to mount a overlay 'stack'."""
-    while True:
-        # Wait for a signal from the rclone_mounter thread
-        if pipe.recv() is True:
-            # Umount the existing directory, just in case
-            unmount(directory)
-            if not directory_in_use(directory):
-                # Mount it
-                subprocess.Popen(MOUNT_BIN + [directory])
+class Overlay_mounter(Mounter):
+    """ Class for mounting overlayfs filesystems. """
+    def __init__(self, *args, **kwargs):
+        super(Overlay_mounter, self).__init__(*args, **kwargs)
+        self.command = [self.mount_bin]
 
 
 def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
     """Function to move cache directory contents to rclone remote."""
+
     while True:
         # Build the command line
-        command = [RCLONE_BIN,
+        command = [Mounter('', '').rclone_bin,
                    'move',
                    '.',
                    '%s:' % rclone_remote,
                    '--exclude=.unionfs']
-
+    
         # Append the schedule, if appropriate
         if schedule:
             command.append('--bwlimit=%s' % schedule)
 
         # Run the command
-        rclone = subprocess.Popen(command, cwd=directory)
+        try:
+            rclone = subprocess.Popen(command, cwd=directory)
+        except OSError, errmsg:
+            print '%s: %s' % (directory, errmsg)
+            break
+
         rclone.wait()
 
         # Sleep until the next schedule
@@ -141,23 +176,22 @@ if __name__ == '__main__':
     overlay_dir = os.path.join(homedir, 'mnt', 'union')
     cache_dir = os.path.join(homedir, 'mnt', 'cache')
 
-    # Create a cross-thread pipe
-    rclone_pipe, overlay_pipe = Pipe()
+    # Rclone mounter
+    rclone = Rclone_mounter(remote_drive, local_dir)
 
-    # Prepare the threads
-    rclone_mount = Process(target=rclone_mounter,
-                           args=(remote_drive, local_dir, rclone_pipe))
-
+    # Overlay mounter
     if platform.system() == 'Linux':
-        overlay_mount = Process(target=overlay_mounter,
-                                args=(overlay_dir, overlay_pipe))
+        overlay = Overlay_mounter('', overlay_dir, rclone.child_pipe)
 
     if platform.system() == 'Darwin':
-        overlay_mount = Process(target=unionfs_mounter,
-                                args=([(cache_dir, 'RW'),
-                                       (local_dir, 'RO')],
-                                      overlay_dir, overlay_pipe))
+        source = '%s=%s:%s=%s' % (cache_dir, 'RW',
+                                  local_dir, 'RO')
 
+        overlay = Unionfs_mounter(source, overlay_dir, rclone.child_pipe)
+
+    # Prepare the threads
+    rclone_mount = Process(target=rclone.mount)
+    overlay_mount = Process(target=overlay.mount)
     rclone_move = Process(target=rclone_mover,
                           args=(cache_dir,
                                 remote_drive,
@@ -187,8 +221,8 @@ if __name__ == '__main__':
         rclone_mount.join()
 
         # Umount the filesystems
-        unmount(overlay_dir)
-        unmount(local_dir)
+        overlay.unmount()
+        rclone.unmount()
 
         # Clean exit
         sys.exit(0)
