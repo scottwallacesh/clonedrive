@@ -29,6 +29,7 @@ def convert_sleeptime(timestring):
 
 class Mounter(object):
     """ Class for mounting filesystems. """
+
     def __init__(self, src, dst, pipe=None):
         """ Initialisation method for the class.
             Determine the OS and configure a few (hardcoded!) paths.
@@ -95,7 +96,7 @@ class Mounter(object):
 
                     # Wait until the mount stops
                     mount.wait()
-                except OSError, errmsg:
+                except OSError as errmsg:
                     print '%s: %s' % (self.command[0], errmsg)
                     break
 
@@ -112,7 +113,7 @@ class Mounter(object):
             lsof = subprocess.Popen([self.lsof_bin, self.mount_point],
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE)
-        except OSError, errmsg:
+        except OSError as errmsg:
             print '%s: %s' % (errmsg, lsof.stderr.read())
             return None
 
@@ -120,12 +121,13 @@ class Mounter(object):
 
         if lsof.returncode == 1:
             return False
-        else:
-            return True
+
+        return True
 
 
 class RcloneMounter(Mounter):
     """ Class for mounting rclone filesystems. """
+
     def __init__(self, *args, **kwargs):
         super(RcloneMounter, self).__init__(*args, **kwargs)
         self.set_command([self.rclone_bin,
@@ -144,6 +146,7 @@ class RcloneMounter(Mounter):
 
 class UnionfsMounter(Mounter):
     """ Class for mounting union filesystems. """
+
     def __init__(self, *args, **kwargs):
         super(UnionfsMounter, self).__init__(*args, **kwargs)
         self.set_command(['/usr/local/bin/unionfs',
@@ -152,6 +155,7 @@ class UnionfsMounter(Mounter):
 
 class OverlayMounter(Mounter):
     """ Class for mounting overlayfs filesystems. """
+
     def __init__(self, *args, **kwargs):
         super(OverlayMounter, self).__init__(*args, **kwargs)
         self.set_command(self.mount_bin)
@@ -159,7 +163,6 @@ class OverlayMounter(Mounter):
 
 def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
     """Function to move cache directory contents to rclone remote."""
-
     while True:
         # Build the command line
         command = [Mounter('', '').rclone_bin,
@@ -178,7 +181,7 @@ def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE,
                                     cwd=directory)
-        except OSError, errmsg:
+        except OSError as errmsg:
             print '%s: %s' % (directory, errmsg)
             break
 
@@ -205,7 +208,7 @@ def main():
     if platform.system() == 'Linux':
         overlay = OverlayMounter(None, overlay_dir, rclone.child_pipe)
 
-    if platform.system() == 'Darwin':
+    elif platform.system() == 'Darwin':
         source = '%s=%s:%s=%s' % (cache_dir, 'RW',
                                   local_dir, 'RO')
 
