@@ -20,7 +20,7 @@ func rclonePath() string {
 func newMounter(src string, dst string) *mounter {
 	newMount := mounter{source: src, mountPoint: dst}
 
-	newMount.unmounter = *exec.Command("/usr/bin/umount", newMount.mountPoint)
+	newMount.unmounter = *exec.Command("/usr/bin/sudo", "/usr/bin/umount", newMount.mountPoint)
 	newMount.useChecker = *exec.Command("/sbin/lsof", newMount.mountPoint)
 
 	newMount.ready = make(chan bool, 1)
@@ -30,13 +30,10 @@ func newMounter(src string, dst string) *mounter {
 
 func overlayMount(cacheDir string, localDir string, dst string) *mounter {
 	// Call the OS-specific mount constructor
-	src := fmt.Sprintf("%s=%s:%s=%s", cacheDir, "RW",
-		localDir, "RO")
-	mounter := newMounter(src, dst)
+	mounter := newMounter("", dst)
 
 	mounter.overlay = true
-	mounter.mounter = *exec.Command("/usr/local/bin/unionfs",
-		"-o", "cow,direct_io,auto_cache")
+	mounter.mounter = *exec.Command("/usr/bin/sudo", "/usr/bin/mount", mounter.mountPoint)
 
 	return mounter
 }
