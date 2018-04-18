@@ -1,78 +1,22 @@
 package main
 
 import (
-	"log"
+	"os"
 	"os/exec"
+	"os/signal"
 	"os/user"
 	"path"
+	"syscall"
 	"time"
 )
 
-type mounter struct {
-	mounter    exec.Cmd
-	unmounter  exec.Cmd
-	useChecker exec.Cmd
-	source     string
-	mountPoint string
-	ready      chan bool
-	overlay    bool
-}
-
-func (m *mounter) unmount() bool {
-	if err := m.unmounter.Run(); err != nil {
-		log.Fatalf("unmount: Run: %v", err)
-		return false
-	}
-
-	return true
-}
-
-func (m *mounter) inUse() bool {
-	if err := m.useChecker.Start(); err != nil {
-		log.Fatalf("inUse: Start: %v", err)
-	}
-	if err := m.useChecker.Wait(); err != nil {
-		return false
-	}
-
-	return true
-}
-
-func (m *mounter) mount() {
-	for {
-		// Wait for a ready signal on overlay mounts
-		if m.overlay == true {
-			// Any signal will do
-			<-m.ready
-		}
-
-		// Make sure nothing's mounted
-		m.unmount()
-
-		// If not in use
-		if !m.inUse() {
-			// Run the command, sleep briefly, signal the overlay and wait
-			if err := m.mounter.Start(); err != nil {
-				log.Fatalf("mount: Start: %v", err)
-			}
-
-			time.Sleep(3 * time.Second)
-
-			if m.overlay == false {
-				m.ready <- true
-			}
-
-			m.mounter.Wait()
-		}
-	}
-}
-
-func rcloneMount(src string, dst string) *mounter {
+func rcloneMount(src string, dst string) *Mount {
 	// Call the OS-specific mount constructor
-	mounter := newMounter(src+":", dst)
+	mounter := Mounter(src+":", dst)
 
 	mounter.overlay = false
-	mounter.mounter = *exec.Command(rclonePath, "mount",
+	mounter.mounter = *exec.Command(rclonePath,
+		"mount",
 		"--read-only",
 		"--allow-other",
 		"--no-modtime",
@@ -96,6 +40,47 @@ func main() {
 	cacheDir := path.Join(homeDir, "mnt", "cache")
 	overlayDir := path.Join(homeDir, "mnt", "union")
 
+	// Prepare the mounts and mover
 	rclone := rcloneMount(remoteDrive, localDir)
 	overlay := overlayMount(cacheDir, localDir, overlayDir)
+	rcloneMove := RcloneMover(cacheDir, remoteDrive)
+
+	// Set the schedule for the mover
+	rcloneMove.setSchedule("07:00,1M 23:00,off")
+
+	// Channel to handle OS signals
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGINT)
+	signal.Notify(c, syscall.SIGQUIT)
+
+	// Goroutine to work with signals
+	go func() {
+		for sig := range c {
+			if sig == syscall.SIGINT {
+				overlay.kill <- true
+				rclone.kill <- true
+			}
+			if sig == syscall.SIGQUIT {
+				overlay.kill <- true
+				rclone.kill <- true
+				rcloneMove.kill <- true
+				os.Exit(0)
+			}
+		}
+	}()
+
+	// Main program loop
+	for {
+		// Launch the mounts and mover
+		go rclone.mount()
+		go overlay.mount()
+
+		for {
+			rcloneMove.mover.Run()
+			if rcloneMove.killed {
+				break
+			}
+			time.Sleep(rcloneMove.sleepTime)
+		}
+	}
 }

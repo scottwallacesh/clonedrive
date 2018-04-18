@@ -7,8 +7,9 @@ import (
 
 var rclonePath = "/usr/local/bin/rclone"
 
-func newMounter(src string, dst string) *mounter {
-	newMount := mounter{source: src, mountPoint: dst}
+// Mounter constructor for Darwin
+func Mounter(src string, dst string) *Mount {
+	newMount := Mount{source: src, mountPoint: dst}
 
 	newMount.unmounter = *exec.Command("/usr/sbin/diskutil", "unmount", newMount.mountPoint)
 	newMount.useChecker = *exec.Command("/usr/sbin/lsof", newMount.mountPoint)
@@ -18,11 +19,11 @@ func newMounter(src string, dst string) *mounter {
 	return &newMount
 }
 
-func overlayMount(cacheDir string, localDir string, dst string) *mounter {
+func overlayMount(cacheDir string, localDir string, dst string) *Mount {
 	// Call the OS-specific mount constructor
 	src := fmt.Sprintf("%s=%s:%s=%s", cacheDir, "RW",
 		localDir, "RO")
-	mounter := newMounter(src, dst)
+	mounter := Mounter(src, dst)
 
 	mounter.overlay = true
 	mounter.mounter = *exec.Command("/usr/local/bin/unionfs",

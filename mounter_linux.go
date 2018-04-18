@@ -17,8 +17,9 @@ func rclonePath() string {
 	return path.Join(homeDir, "bin", "rclone")
 }
 
-func newMounter(src string, dst string) *mounter {
-	newMount := mounter{source: src, mountPoint: dst}
+// Mounter constructor for Linux
+func Mounter(src string, dst string) *Mounter {
+	newMount := Mount{source: src, mountPoint: dst}
 
 	newMount.unmounter = *exec.Command("/usr/bin/sudo", "/usr/bin/umount", newMount.mountPoint)
 	newMount.useChecker = *exec.Command("/sbin/lsof", newMount.mountPoint)
@@ -28,7 +29,7 @@ func newMounter(src string, dst string) *mounter {
 	return &newMount
 }
 
-func overlayMount(cacheDir string, localDir string, dst string) *mounter {
+func overlayMount(cacheDir string, localDir string, dst string) *Mounter {
 	// Call the OS-specific mount constructor
 	mounter := newMounter("", dst)
 
