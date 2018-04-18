@@ -1,4 +1,4 @@
-package main
+package mounter
 
 import (
 	"log"
@@ -8,14 +8,14 @@ import (
 
 // Mount struct
 type Mount struct {
-	mounter    exec.Cmd
+	Mounter    exec.Cmd
 	unmounter  exec.Cmd
 	useChecker exec.Cmd
 	source     string
 	mountPoint string
 	ready      chan bool
-	overlay    bool
-	kill       chan bool
+	Overlay    bool
+	Kill       chan bool
 	killed     bool
 }
 
@@ -39,15 +39,16 @@ func (m *Mount) inUse() bool {
 	return true
 }
 
-func (m *Mount) mount() {
+// Mount method
+func (m *Mount) Mount() {
 	go func() {
-		m.killed = <-m.kill
+		m.killed = <-m.Kill
 		m.unmount()
 	}()
 
 	for {
 		// Wait for a ready signal on overlay mounts
-		if m.overlay == true {
+		if m.Overlay == true {
 			// Any signal will do
 			<-m.ready
 		}
@@ -55,20 +56,23 @@ func (m *Mount) mount() {
 		// Make sure nothing's mounted
 		m.unmount()
 
+		// This is a new mount session
+		m.killed = false
+
 		// If not in use
 		if !m.inUse() {
 			// Run the command, sleep briefly, signal the overlay and wait
-			if err := m.mounter.Start(); err != nil {
+			if err := m.Mounter.Start(); err != nil {
 				log.Fatalf("mount: Start: %v", err)
 			}
 
 			time.Sleep(3 * time.Second)
 
-			if m.overlay == false {
+			if m.Overlay == false {
 				m.ready <- true
 			}
 
-			m.mounter.Wait()
+			m.Mounter.Wait()
 
 			if m.killed {
 				break

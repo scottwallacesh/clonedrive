@@ -1,32 +1,15 @@
 package main
 
 import (
+	"./mounter"
+	"./rclone"
 	"os"
-	"os/exec"
 	"os/signal"
 	"os/user"
 	"path"
 	"syscall"
 	"time"
 )
-
-func rcloneMount(src string, dst string) *Mount {
-	// Call the OS-specific mount constructor
-	mounter := Mounter(src+":", dst)
-
-	mounter.overlay = false
-	mounter.mounter = *exec.Command(rclonePath,
-		"mount",
-		"--read-only",
-		"--allow-other",
-		"--no-modtime",
-		"--dir-cache-time=240m",
-		"--tpslimit=10",
-		"--tpslimit-burst=1",
-		"--buffer-size=1G")
-
-	return mounter
-}
 
 func main() {
 	remoteDrive := "GoogleDriveCrypt"
@@ -40,13 +23,12 @@ func main() {
 	cacheDir := path.Join(homeDir, "mnt", "cache")
 	overlayDir := path.Join(homeDir, "mnt", "union")
 
-	// Prepare the mounts and mover
-	rclone := rcloneMount(remoteDrive, localDir)
-	overlay := overlayMount(cacheDir, localDir, overlayDir)
-	rcloneMove := RcloneMover(cacheDir, remoteDrive)
+	// Prepare the mounts
+	rclone := rclone.New(remoteDrive, localDir, cacheDir)
+	overlay := mounter.OverlayMount(cacheDir, localDir, overlayDir)
 
 	// Set the schedule for the mover
-	rcloneMove.setSchedule("07:00,1M 23:00,off")
+	rclone.Move.SetSchedule("07:00,1M 23:00,off")
 
 	// Channel to handle OS signals
 	c := make(chan os.Signal, 1)
@@ -57,14 +39,13 @@ func main() {
 	go func() {
 		for sig := range c {
 			if sig == syscall.SIGINT {
-				overlay.kill <- true
-				rclone.kill <- true
+				overlay.Kill <- true
+				rclone.Mount.Kill <- true
 			}
 			if sig == syscall.SIGQUIT {
-				overlay.kill <- true
-				rclone.kill <- true
-				rcloneMove.kill <- true
-				os.Exit(0)
+				overlay.Kill <- true
+				rclone.Mount.Kill <- true
+				rclone.Move.Kill <- true
 			}
 		}
 	}()
@@ -72,15 +53,19 @@ func main() {
 	// Main program loop
 	for {
 		// Launch the mounts and mover
-		go rclone.mount()
-		go overlay.mount()
+		go rclone.Mount.Mount()
+		go overlay.Mount()
 
 		for {
-			rcloneMove.mover.Run()
-			if rcloneMove.killed {
+			rclone.Move.Run()
+			if rclone.Move.Killed {
 				break
 			}
-			time.Sleep(rcloneMove.sleepTime)
+			time.Sleep(rclone.Move.SleepTime)
+		}
+
+		if rclone.Move.Killed {
+			break
 		}
 	}
 }
