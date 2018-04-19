@@ -17,6 +17,7 @@ func Mounter(src string, dst string) *Mount {
 	return &newMount
 }
 
+// OVerlayMounter constructor for Darwin
 func OverlayMount(cacheDir string, localDir string, dst string) *Mount {
 	// Call the OS-specific mount constructor
 	src := fmt.Sprintf("%s=%s:%s=%s", cacheDir, "RW",

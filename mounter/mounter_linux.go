@@ -5,7 +5,7 @@ import (
 )
 
 // Mounter constructor for Linux
-func Mounter(src string, dst string) *Mounter {
+func Mounter(src string, dst string) *Mount {
 	newMount := Mount{source: src, mountPoint: dst}
 
 	newMount.unmounter = *exec.Command("/usr/bin/sudo", "/usr/bin/umount", newMount.mountPoint)
@@ -16,9 +16,10 @@ func Mounter(src string, dst string) *Mounter {
 	return &newMount
 }
 
-func OverlayMount(cacheDir string, localDir string, dst string) *Mounter {
+// OverlayMount constructor for Linux
+func OverlayMount(cacheDir string, localDir string, dst string) *Mount {
 	// Call the OS-specific mount constructor
-	mounter := newMounter("", dst)
+	mounter := Mounter("", dst)
 
 	mounter.Overlay = true
 	mounter.Mounter = *exec.Command("/usr/bin/sudo", "/usr/bin/mount", mounter.mountPoint)
