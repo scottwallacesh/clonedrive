@@ -8,9 +8,9 @@ import (
 
 // Mount struct
 type Mount struct {
-	Mounter    exec.Cmd
-	unmounter  exec.Cmd
-	useChecker exec.Cmd
+	Mounter    []string
+	unmounter  []string
+	useChecker []string
 	source     string
 	mountPoint string
 	ready      chan bool
@@ -20,7 +20,8 @@ type Mount struct {
 }
 
 func (m *Mount) unmount() bool {
-	if err := m.unmounter.Run(); err != nil {
+	command := exec.Command(string(m.unmounter[0]), m.unmounter[1:]...)
+	if err := command.Run(); err != nil {
 		log.Fatalf("unmount: Run: %v", err)
 		return false
 	}
@@ -29,10 +30,11 @@ func (m *Mount) unmount() bool {
 }
 
 func (m *Mount) inUse() bool {
-	if err := m.useChecker.Start(); err != nil {
+	command := exec.Command(string(m.useChecker[0]), m.useChecker[1:]...)
+	if err := command.Start(); err != nil {
 		log.Fatalf("inUse: Start: %v", err)
 	}
-	if err := m.useChecker.Wait(); err != nil {
+	if err := command.Wait(); err != nil {
 		return false
 	}
 
@@ -54,7 +56,9 @@ func (m *Mount) Mount() {
 		}
 
 		// Make sure nothing's mounted
-		m.unmount()
+		if m.inUse() {
+			m.unmount()
+		}
 
 		// This is a new mount session
 		m.killed = false
@@ -62,17 +66,24 @@ func (m *Mount) Mount() {
 		// If not in use
 		if !m.inUse() {
 			// Run the command, sleep briefly, signal the overlay and wait
-			if err := m.Mounter.Start(); err != nil {
+			log.Print("Trying the rclone mount")
+			command := exec.Command(string(m.Mounter[0]), m.Mounter[1:]...)
+
+			log.Print("Args: %v", command.Args)
+			if err := command.Start(); err != nil {
 				log.Fatalf("mount: Start: %v", err)
 			}
 
+			log.Print("Sleeping")
 			time.Sleep(3 * time.Second)
 
+			log.Print("Overlay ready?")
 			if m.Overlay == false {
 				m.ready <- true
 			}
 
-			m.Mounter.Wait()
+			log.Print("Waiting for command to complete")
+			command.Wait()
 
 			if m.killed {
 				break

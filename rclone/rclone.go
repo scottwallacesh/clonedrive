@@ -2,7 +2,6 @@ package rclone
 
 import (
 	"../mounter"
-	"os/exec"
 )
 
 // Rclone struct
@@ -18,7 +17,8 @@ func New(src string, dst string, cache string) *Rclone {
 	mount := mounter.Mounter(src+":", dst)
 
 	mount.Overlay = false
-	mount.Mounter = *exec.Command(RclonePath,
+	mount.Mounter = []string{
+		RclonePath,
 		"mount",
 		"--read-only",
 		"--allow-other",
@@ -27,7 +27,9 @@ func New(src string, dst string, cache string) *Rclone {
 		"--tpslimit=10",
 		"--tpslimit-burst=1",
 		"--buffer-size=1G",
-	)
+		src + ":",
+		dst,
+	}
 
 	return &Rclone{
 		path:  RclonePath,

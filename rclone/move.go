@@ -8,7 +8,7 @@ import (
 
 // Move struct
 type Move struct {
-	move         exec.Cmd
+	move         []string
 	source       string
 	rcloneRemote string
 	SleepTime    time.Duration
@@ -19,7 +19,7 @@ type Move struct {
 
 // SetSchedule method
 func (m *Move) SetSchedule(schedule string) {
-	m.move.Args = append(m.move.Args, "--bwlimit="+schedule)
+	m.move = append(m.move, "--bwlimit="+schedule)
 }
 
 // SetSleepTime method
@@ -34,18 +34,21 @@ func (m *Move) SetSleepTime(sleepTime string) bool {
 
 // Run method
 func (m *Move) Run() {
-	m.move.Dir = m.source
-	m.move.Run()
+	command := exec.Command(string(m.move[0]), m.move[1:]...)
+	command.Dir = m.source
+	command.Run()
 }
 
 // Mover constructor
 func Mover(src string, dest string) *Move {
 	newMove := Move{source: src, rcloneRemote: dest + ":"}
-	newMove.move = *exec.Command(RclonePath,
+	newMove.move = []string{
+		RclonePath,
 		"move",
 		".",
 		newMove.rcloneRemote,
-		"--exclude=.unionfs")
+		"--exclude=.unionfs",
+	}
 
 	// Default sleepTime of 6 hours
 	newMove.SleepTime = 6 * time.Hour
