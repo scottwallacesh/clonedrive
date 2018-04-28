@@ -1,7 +1,7 @@
 package rclone
 
 import (
-	"../mounter"
+	"clonedrive/mounter"
 )
 
 // Rclone struct

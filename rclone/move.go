@@ -1,7 +1,7 @@
 package rclone
 
 import (
-	"../lib"
+	"clonedrive/lib"
 	"os/exec"
 	"time"
 )

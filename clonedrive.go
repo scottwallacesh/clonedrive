@@ -1,14 +1,16 @@
 package main
 
 import (
-	"./mounter"
-	"./rclone"
+	"fmt"
 	"os"
 	"os/signal"
 	"os/user"
 	"path"
 	"syscall"
 	"time"
+
+	"clonedrive/mounter"
+	"clonedrive/rclone"
 )
 
 func main() {
