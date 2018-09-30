@@ -5,7 +5,7 @@ func Mounter(src string, dst string) *Mount {
 	newMount := Mount{source: src, mountPoint: dst}
 
 	newMount.unmounter = []string{"/usr/bin/sudo", "/usr/bin/umount", newMount.mountPoint}
-	newMount.useChecker = []string{"/sbin/lsof", newMount.mountPoint}
+	newMount.useChecker = []string{"/usr/bin/lsof", newMount.mountPoint}
 
 	newMount.ready = make(chan bool, 1)
 

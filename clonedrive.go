@@ -39,15 +39,24 @@ func main() {
 
 	// Goroutine to work with signals
 	go func() {
-		for sig := range c {
-			if sig == syscall.SIGINT {
-				overlay.Kill <- true
-				rclone.Mount.Kill <- true
-			}
-			if sig == syscall.SIGQUIT {
-				overlay.Kill <- true
-				rclone.Mount.Kill <- true
-				rclone.Move.Kill <- true
+		fmt.Printf("Signal looper\n")
+		for {
+			fmt.Printf("Waiting for signal\n")
+			for sig := range c {
+				fmt.Printf("Signal received\n")
+				if sig == syscall.SIGINT {
+					fmt.Print("SIGINT received\n")
+					overlay.Kill <- true
+					rclone.Mount.Kill <- true
+				}
+				if sig == syscall.SIGQUIT {
+					fmt.Print("SIGQUIT received\n")
+					overlay.Kill <- true
+					rclone.Mount.Kill <- true
+					rclone.Move.Kill <- true
+				}
+				fmt.Printf("Signal completed\n")
+				fmt.Printf("Awaiting further signals\n")
 			}
 		}
 	}()
@@ -59,14 +68,17 @@ func main() {
 		go overlay.Mount()
 
 		for {
+			fmt.Printf("Running move\n")
 			rclone.Move.Run()
 			if rclone.Move.Killed {
+				fmt.Printf("Move killed\n")
 				break
 			}
 			time.Sleep(rclone.Move.SleepTime)
 		}
 
 		if rclone.Move.Killed {
+			fmt.Printf("Move really killed\n")
 			break
 		}
 	}

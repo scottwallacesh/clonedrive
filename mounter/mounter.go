@@ -1,6 +1,7 @@
 package mounter
 
 import (
+	"fmt"
 	"log"
 	"os/exec"
 	"time"
@@ -43,10 +44,12 @@ func (m *Mount) inUse() bool {
 
 // Mount method
 func (m *Mount) Mount() {
-	go func() {
+	go func(m *Mount) {
+		fmt.Printf("Waiting for mount kill command\n")
 		m.killed = <-m.Kill
+		fmt.Printf("Mount kill command received\n")
 		m.unmount()
-	}()
+	}(m)
 
 	for {
 		// Wait for a ready signal on overlay mounts
@@ -69,7 +72,7 @@ func (m *Mount) Mount() {
 			log.Print("Trying the rclone mount")
 			command := exec.Command(string(m.Mounter[0]), m.Mounter[1:]...)
 
-			log.Print("Args: %v", command.Args)
+			log.Printf("Args: %v", command.Args)
 			if err := command.Start(); err != nil {
 				log.Fatalf("mount: Start: %v", err)
 			}

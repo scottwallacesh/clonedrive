@@ -2,6 +2,7 @@ package rclone
 
 import (
 	"clonedrive/lib"
+	"fmt"
 	"os/exec"
 	"time"
 )
@@ -34,6 +35,12 @@ func (m *Move) SetSleepTime(sleepTime string) bool {
 
 // Run method
 func (m *Move) Run() {
+	go func(m *Move) {
+		fmt.Printf("Waiting for mover kill signal\n")
+		m.Killed = <-m.Kill
+		fmt.Printf("Recieved mover kill signal\n")
+	}(m)
+
 	command := exec.Command(string(m.move[0]), m.move[1:]...)
 	command.Dir = m.source
 	command.Run()
