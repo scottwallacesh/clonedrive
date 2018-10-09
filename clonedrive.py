@@ -215,35 +215,33 @@ def main():
         overlay = UnionfsMounter(source, overlay_dir, rclone.child_pipe)
 
     # Prepare the threads
-    rclone_mount = Process(target=rclone.mount)
-    overlay_mount = Process(target=overlay.mount)
-    rclone_move = Process(target=rclone_mover,
-                          args=(cache_dir,
-                                remote_drive,
-                                '6h',
-                                '07:00,1M 23:00,off'))
+    threads = []
+    threads.append(Process(target=rclone.mount, name='rclone mount'))
+    threads.append(Process(target=overlay.mount, name='overlay mount'))
+    threads.append(Process(target=rclone_mover, name='rclonve mover',
+                           args=(cache_dir,
+                                 remote_drive,
+                                 '6h',
+                                 '07:00,1M 23:00,off')))
 
     # Wait for a keyboard interrupt
     try:
-        # Start the threads
-        rclone_mount.start()
-        overlay_mount.start()
-        rclone_move.start()
-
         while True:
-            for thread in [rclone_mount, overlay_mount, rclone_move]:
-                if thread.is_alive():
-                    thread.join(0.5)
+            for thread in threads:
+                if not thread.is_alive():
+                    print 'Starting %s' % thread.name
+                    thread.start()
+                thread.join(0.5)
     except KeyboardInterrupt:
         # Kill the threads
-        rclone_move.terminate()
-        overlay_mount.terminate()
-        rclone_mount.terminate()
+        for thread in threads:
+            print 'Terminating %s' % thread.name
+            thread.terminate()
 
         # Wait for the threads
-        rclone_move.join()
-        overlay_mount.join()
-        rclone_mount.join()
+        for thread in threads:
+            print 'Waiting for %s to finish' % thread.name
+            thread.join()
 
         # Umount the filesystems
         overlay.unmount()
