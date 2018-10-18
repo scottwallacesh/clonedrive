@@ -218,7 +218,7 @@ def main():
     threads = []
     threads.append(Process(target=rclone.mount, name='rclone mount'))
     threads.append(Process(target=overlay.mount, name='overlay mount'))
-    threads.append(Process(target=rclone_mover, name='rclonve mover',
+    threads.append(Process(target=rclone_mover, name='rclone mover',
                            args=(cache_dir,
                                  remote_drive,
                                  '6h',
