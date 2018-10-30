@@ -161,36 +161,6 @@ class OverlayMounter(Mounter):
         self.set_command(self.mount_bin)
 
 
-def rclone_mover(directory, rclone_remote, sleeptime='6h', schedule=None):
-    """Function to move cache directory contents to rclone remote."""
-    while True:
-        # Build the command line
-        command = [Mounter('', '').rclone_bin,
-                   'move',
-                   '.',
-                   '%s:' % rclone_remote,
-                   '--exclude=.unionfs']
-
-        # Append the schedule, if appropriate
-        if schedule:
-            command.append('--bwlimit=%s' % schedule)
-
-        # Run the command
-        try:
-            move = subprocess.Popen(command,
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE,
-                                    cwd=directory)
-        except OSError as errmsg:
-            print '%s: %s' % (directory, errmsg)
-            break
-
-        move.wait()
-
-        # Sleep until the next schedule
-        time.sleep(convert_sleeptime(sleeptime))
-
-
 def main():
     """ Function to call the main programm logic. """
 
@@ -218,11 +188,6 @@ def main():
     threads = []
     threads.append(Process(target=rclone.mount, name='rclone mount'))
     threads.append(Process(target=overlay.mount, name='overlay mount'))
-    threads.append(Process(target=rclone_mover, name='rclone mover',
-                           args=(cache_dir,
-                                 remote_drive,
-                                 '6h',
-                                 '07:00,1M 23:00,off')))
 
     # Wait for a keyboard interrupt
     try:
