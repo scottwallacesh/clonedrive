@@ -11,6 +11,12 @@ import time
 import sys
 import platform
 
+def spinning_cursor():
+    """Iterator function for a spinner"""
+    while True:
+        for cursor in '|/-\\':
+            yield cursor
+
 
 def convert_sleeptime(timestring):
     """Function to convert a simply timespan string to number of seconds."""
@@ -191,12 +197,21 @@ def main():
 
     # Wait for a keyboard interrupt
     try:
+        # Set up a spinner
+        spinner = spinning_cursor()
+
+        # Main thread loop
         while True:
             for thread in threads:
                 if not thread.is_alive():
                     print 'Starting %s' % thread.name
                     thread.start()
-                thread.join(0.5)
+                thread.join(2.0)
+
+            # Display a spinner to show it's looping
+            sys.stdout.write(next(spinner))
+            sys.stdout.flush()
+            sys.stdout.write('\b')
     except KeyboardInterrupt:
         # Kill the threads
         for thread in threads:
