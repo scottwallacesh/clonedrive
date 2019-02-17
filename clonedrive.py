@@ -255,7 +255,7 @@ def main():
                     kill_and_unmount(threads, overlay, rclone)
                     break
 
-                if retries > 1:
+                if retries > 0:
                     print 'Files detected in the overlay filesystem.'
                     print 'Resuming normal operation.'
 
