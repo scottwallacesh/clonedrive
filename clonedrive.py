@@ -11,6 +11,10 @@ import time
 import sys
 import platform
 
+
+MAX_OVERLAY_RETRIES = 5
+
+
 def spinning_cursor():
     """Iterator function for a spinner"""
     while True:
@@ -234,23 +238,24 @@ def main():
                     thread.join(2.0)
 
                 # Check that the overlay mount contains files
-                tries = 0
-                while tries < 5:
+                retries = 0
+                while retries < MAX_OVERLAY_RETRIES:
                     if overlay.has_files():
                         break
 
                     print 'Overlay filesystem contains no files.'
-                    tries += 1
+                    retries += 1
 
-                    print 'Waiting for %d seconds...' % (tries * 5)
-                    time.sleep(tries * 5)
+                    print 'Retry: %d of %d.  Waiting for %d seconds...' % \
+                        (retries, MAX_OVERLAY_RETRIES, (retries * 5))
+                    time.sleep(retries * 5)
                 else:
                     # Try unmounting the filesystem to start over
                     print 'Retries exhausted.  Attempting to remount.'
                     kill_and_unmount(threads, overlay, rclone)
                     break
 
-                if tries > 1:
+                if retries > 1:
                     print 'Files detected in the overlay filesystem.'
                     print 'Resuming normal operation.'
 
