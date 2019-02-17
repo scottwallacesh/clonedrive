@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-""" Script to mount a read-only, encrypted Google Drive with a read-write,
-    local cache for use with something like Plex.
+"""Script to mount a read-only, encrypted Google Drive with a read-write,
+   local cache for use with something like Plex.
 """
 
 import subprocess
@@ -34,11 +34,11 @@ def convert_sleeptime(timestring):
 
 
 class Mounter(object):
-    """ Class for mounting filesystems. """
+    """Class for mounting filesystems."""
 
     def __init__(self, src, dst, pipe=None):
-        """ Initialisation method for the class.
-            Determine the OS and configure a few (hardcoded!) paths.
+        """Initialisation method for the class.
+           Determine the OS and configure a few (hardcoded!) paths.
         """
         if platform.system() == 'Linux':
             self.mount_bin = ['/usr/bin/sudo', '/usr/bin/mount']
@@ -70,7 +70,7 @@ class Mounter(object):
         self.command = command
 
     def mount(self):
-        """ Method to mount the filesystem. """
+        """Method to mount the filesystem."""
         while True:
             # Only wait for signal if we're the overlay
             if self.parent_pipe is None:
@@ -107,7 +107,7 @@ class Mounter(object):
                     break
 
     def unmount(self):
-        """ Method to unmount. """
+        """Method to unmount."""
         unmounter = subprocess.Popen(self.umount_bin + [self.mount_point],
                                      stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE)
@@ -130,9 +130,15 @@ class Mounter(object):
 
         return True
 
+    def has_files(self):
+        """Method to test if files are detected in the mountpoint."""
+        if os.listdir(self.mount_point):
+            return True
+        return False
+
 
 class RcloneMounter(Mounter):
-    """ Class for mounting rclone filesystems. """
+    """Class for mounting rclone filesystems."""
 
     def __init__(self, *args, **kwargs):
         super(RcloneMounter, self).__init__(*args, **kwargs)
@@ -151,7 +157,7 @@ class RcloneMounter(Mounter):
 
 
 class UnionfsMounter(Mounter):
-    """ Class for mounting union filesystems. """
+    """Class for mounting union filesystems."""
 
     def __init__(self, *args, **kwargs):
         super(UnionfsMounter, self).__init__(*args, **kwargs)
@@ -160,15 +166,31 @@ class UnionfsMounter(Mounter):
 
 
 class OverlayMounter(Mounter):
-    """ Class for mounting overlayfs filesystems. """
+    """Class for mounting overlayfs filesystems."""
 
     def __init__(self, *args, **kwargs):
         super(OverlayMounter, self).__init__(*args, **kwargs)
         self.set_command(self.mount_bin)
 
 
+def kill_and_unmount(threads, overlay, rclone):
+    """Function to wind up the threads and unmount the mountpoints."""
+    # Kill the threads
+    for thread in threads:
+        print 'Terminating %s' % thread.name
+        thread.terminate()
+
+    # Wait for the threads
+    for thread in threads:
+        print 'Waiting for %s to finish' % thread.name
+        thread.join()
+
+    # Umount the filesystems
+    overlay.unmount()
+    rclone.unmount()
+
 def main():
-    """ Function to call the main programm logic. """
+    """Function to call the main programm logic."""
 
     # Main directories
     remote_drive = 'GoogleDriveCrypt'
@@ -190,42 +212,54 @@ def main():
 
         overlay = UnionfsMounter(source, overlay_dir, rclone.child_pipe)
 
-    # Prepare the threads
-    threads = []
-    threads.append(Process(target=rclone.mount, name='rclone mount'))
-    threads.append(Process(target=overlay.mount, name='overlay mount'))
+    # Set up a spinner
+    spinner = spinning_cursor()
 
     # Wait for a keyboard interrupt
     try:
-        # Set up a spinner
-        spinner = spinning_cursor()
-
         # Main thread loop
         while True:
-            for thread in threads:
-                if not thread.is_alive():
-                    print 'Starting %s' % thread.name
-                    thread.start()
-                thread.join(2.0)
+            print 'Attempting to mount rclone and overlay filesystems'
 
-            # Display a spinner to show it's looping
-            sys.stdout.write(next(spinner))
-            sys.stdout.flush()
-            sys.stdout.write('\b')
+            # Prepare the threads
+            threads = []
+            threads.append(Process(target=rclone.mount, name='rclone mount'))
+            threads.append(Process(target=overlay.mount, name='overlay mount'))
+
+            while True:
+                for thread in threads:
+                    if not thread.is_alive():
+                        print 'Starting %s' % thread.name
+                        thread.start()
+                    thread.join(2.0)
+
+                # Check that the overlay mount contains files
+                tries = 0
+                while tries < 5:
+                    if overlay.has_files():
+                        break
+
+                    print 'Overlay filesystem contains no files.'
+                    tries += 1
+
+                    print 'Waiting for %d seconds...' % (tries * 5)
+                    time.sleep(tries * 5)
+                else:
+                    # Try unmounting the filesystem to start over
+                    print 'Retries exhausted.  Attempting to remount.'
+                    kill_and_unmount(threads, overlay, rclone)
+                    break
+
+                if tries > 1:
+                    print 'Files detected in the overlay filesystem.'
+                    print 'Resuming normal operation.'
+
+                # Display a spinner to show it's looping
+                sys.stdout.write(next(spinner))
+                sys.stdout.flush()
+                sys.stdout.write('\b')
     except KeyboardInterrupt:
-        # Kill the threads
-        for thread in threads:
-            print 'Terminating %s' % thread.name
-            thread.terminate()
-
-        # Wait for the threads
-        for thread in threads:
-            print 'Waiting for %s to finish' % thread.name
-            thread.join()
-
-        # Umount the filesystems
-        overlay.unmount()
-        rclone.unmount()
+        kill_and_unmount(threads, overlay, rclone)
 
 
 if __name__ == '__main__':
