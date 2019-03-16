@@ -15,28 +15,6 @@ import platform
 MAX_OVERLAY_RETRIES = 5
 
 
-def spinning_cursor():
-    """Iterator function for a spinner"""
-    while True:
-        for cursor in '|/-\\':
-            yield cursor
-
-
-def convert_sleeptime(timestring):
-    """Function to convert a simply timespan string to number of seconds."""
-    seconds_per_unit = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
-
-    try:
-        # Return an integer, if possible
-        return int(timestring)
-    except ValueError:
-        # Otherwise try to convert the provided string
-        try:
-            return int(timestring[:-1]) * seconds_per_unit[timestring[-1]]
-        except KeyError:
-            raise
-
-
 class Mounter(object):
     """Class for mounting filesystems."""
 
@@ -216,9 +194,6 @@ def main():
 
         overlay = UnionfsMounter(source, overlay_dir, rclone.child_pipe)
 
-    # Set up a spinner
-    spinner = spinning_cursor()
-
     # Wait for a keyboard interrupt
     try:
         # Main thread loop
@@ -259,10 +234,8 @@ def main():
                     print 'Files detected in the overlay filesystem.'
                     print 'Resuming normal operation.'
 
-                # Display a spinner to show it's looping
-                sys.stdout.write(next(spinner))
                 sys.stdout.flush()
-                sys.stdout.write('\b')
+
     except KeyboardInterrupt:
         kill_and_unmount(threads, overlay, rclone)
 
