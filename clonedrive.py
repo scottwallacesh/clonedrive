@@ -179,7 +179,7 @@ def main():
     homedir = os.path.expanduser('~')
     local_dir = os.path.join(homedir, 'mnt', 'GoogleDriveCrypt')
     overlay_dir = os.path.join(homedir, 'mnt', 'union')
-    cache_dir = os.path.join(homedir, 'mnt', 'cache')
+    cache_dir = os.path.join(homedir, 'mnt', '.cache')
 
     # Rclone mounter
     rclone = RcloneMounter(remote_drive, local_dir)
