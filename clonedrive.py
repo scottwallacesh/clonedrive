@@ -83,9 +83,10 @@ class Mounter(object):
                         self.parent_pipe.send(True)
 
                     # Wait until the mount stops
-                    mount.wait()
+                    (out, err) = mount.communicate()
                 except OSError as errmsg:
                     print '%s: %s' % (self.command[0], errmsg)
+                    print err
                     break
 
     def unmount(self):
@@ -93,7 +94,12 @@ class Mounter(object):
         unmounter = subprocess.Popen(self.umount_bin + [self.mount_point],
                                      stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE)
-        unmounter.wait()
+        (out, err) = unmounter.communicate()
+
+        if err:
+            print err
+        if out:
+            print out
 
     def in_use(self):
         """Method to check if a directory is in use."""
@@ -105,9 +111,10 @@ class Mounter(object):
             print '%s: %s' % (errmsg, lsof.stderr.read())
             return None
 
-        lsof.wait()
+        (out, err) = lsof.communicate()
 
         if lsof.returncode == 1:
+            print err
             return False
 
         return True
