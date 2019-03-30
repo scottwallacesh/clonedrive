@@ -245,7 +245,8 @@ def main():
                     logging.info('Files detected in the overlay filesystem.')
                     logging.info('Resuming normal operation.')
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt,
+            SystemExit):
         kill_and_unmount(threads, overlay, rclone)
 
 
