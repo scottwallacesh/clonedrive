@@ -250,7 +250,8 @@ def main():
 
 
 if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)-15s %(levelname)s: %(message)s')
+    logging.basicConfig(format='%(asctime)-15s %(levelname)s: %(message)s',
+                        level=logging.INFO)
     main()
 
     # Clean exit
