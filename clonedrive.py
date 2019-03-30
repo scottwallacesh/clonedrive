@@ -184,6 +184,7 @@ def kill_and_unmount(threads, overlay, rclone):
     overlay.unmount()
     rclone.unmount()
 
+
 def main():
     """Function to call the main programm logic."""
 
@@ -207,6 +208,11 @@ def main():
 
         overlay = UnionfsMounter(source, overlay_dir, rclone.child_pipe)
 
+    def clean_shutdown(signum, _):
+        """Function to act as a signal handler for a clean shutdown."""
+        logging.warning('Signal %s received.  Exiting cleanly.', signum)
+        kill_and_unmount(threads, overlay, rclone)
+
     # Wait for a keyboard interrupt
     try:
         # Main thread loop
@@ -228,8 +234,7 @@ def main():
                     thread.join(2.0)
 
                 # Register a SIGTERM handler here
-                signal.signal(signal.SIGTERM,
-                              kill_and_unmount(threads, overlay, rclone))
+                signal.signal(signal.SIGTERM, clean_shutdown)
 
                 # Check that the overlay mount contains files
                 retries = 0
