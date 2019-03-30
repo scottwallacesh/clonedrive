@@ -220,16 +220,16 @@ def main():
             threads.append(multiprocessing.Process(target=overlay.mount,
                                                    name='overlay mount'))
 
-            # Register a SIGTERM handler here
-            signal.signal(signal.SIGTERM,
-                          kill_and_unmount(threads, overlay, rclone))
-
             while True:
                 for thread in threads:
                     if not thread.is_alive():
                         logging.info('Starting %s', thread.name)
                         thread.start()
                     thread.join(2.0)
+
+                # Register a SIGTERM handler here
+                signal.signal(signal.SIGTERM,
+                              kill_and_unmount(threads, overlay, rclone))
 
                 # Check that the overlay mount contains files
                 retries = 0
