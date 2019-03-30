@@ -8,6 +8,7 @@ import logging
 import multiprocessing
 import os
 import platform
+import signal
 import subprocess
 import sys
 import time
@@ -113,10 +114,13 @@ class Mounter(object):
             logging.error('%s: %s', errmsg, lsof.stderr.read())
             return None
 
-        (_, err) = lsof.communicate()
+        (out, err) = lsof.communicate()
 
         if lsof.returncode == 1:
-            logging.warning(err)
+            if out:
+                logging.warning(out)
+            if err:
+                logging.warning(err)
             return False
 
         return True
@@ -216,6 +220,10 @@ def main():
             threads.append(multiprocessing.Process(target=overlay.mount,
                                                    name='overlay mount'))
 
+            # Register a SIGTERM handler here
+            signal.signal(signal.SIGTERM,
+                          kill_and_unmount(threads, overlay, rclone))
+
             while True:
                 for thread in threads:
                     if not thread.is_alive():
@@ -245,8 +253,7 @@ def main():
                     logging.info('Files detected in the overlay filesystem.')
                     logging.info('Resuming normal operation.')
 
-    except (KeyboardInterrupt,
-            SystemExit):
+    except KeyboardInterrupt:
         kill_and_unmount(threads, overlay, rclone)
 
 
