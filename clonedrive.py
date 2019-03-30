@@ -4,12 +4,13 @@
    local cache for use with something like Plex.
 """
 
-import subprocess
+import logging
+import multiprocessing
 import os
-from multiprocessing import Process, Pipe
-import time
-import sys
 import platform
+import subprocess
+import sys
+import time
 
 
 MAX_OVERLAY_RETRIES = 5
@@ -45,7 +46,7 @@ class Mounter(object):
         else:
             # Create a pipe for signalling to the overlay
             # that the mount is ready to be overlaid.
-            self.parent_pipe, self.child_pipe = Pipe()
+            self.parent_pipe, self.child_pipe = multiprocessing.Pipe()
 
     def set_command(self, command):
         """ Setter method. """
@@ -85,8 +86,9 @@ class Mounter(object):
                     # Wait until the mount stops
                     (out, err) = mount.communicate()
                 except OSError as errmsg:
-                    print '%s: %s' % (self.command[0], errmsg)
-                    print err
+                    logging.error('%s: %s', self.command[0], errmsg)
+                    logging.error(out)
+                    logging.error(err)
                     break
 
     def unmount(self):
@@ -97,9 +99,9 @@ class Mounter(object):
         (out, err) = unmounter.communicate()
 
         if err:
-            print err
+            logging.error(err)
         if out:
-            print out
+            logging.info(out)
 
     def in_use(self):
         """Method to check if a directory is in use."""
@@ -108,13 +110,13 @@ class Mounter(object):
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE)
         except OSError as errmsg:
-            print '%s: %s' % (errmsg, lsof.stderr.read())
+            logging.error('%s: %s', errmsg, lsof.stderr.read())
             return None
 
-        (out, err) = lsof.communicate()
+        (_, err) = lsof.communicate()
 
         if lsof.returncode == 1:
-            print err
+            logging.warning(err)
             return False
 
         return True
@@ -166,12 +168,12 @@ def kill_and_unmount(threads, overlay, rclone):
     """Function to wind up the threads and unmount the mountpoints."""
     # Kill the threads
     for thread in threads:
-        print 'Terminating %s' % thread.name
+        logging.info('Terminating %s', thread.name)
         thread.terminate()
 
     # Wait for the threads
     for thread in threads:
-        print 'Waiting for %s to finish' % thread.name
+        logging.info('Waiting for %s to finish', thread.name)
         thread.join()
 
     # Umount the filesystems
@@ -205,17 +207,19 @@ def main():
     try:
         # Main thread loop
         while True:
-            print 'Attempting to mount rclone and overlay filesystems'
+            logging.info('Attempting to mount rclone and overlay filesystems')
 
             # Prepare the threads
             threads = []
-            threads.append(Process(target=rclone.mount, name='rclone mount'))
-            threads.append(Process(target=overlay.mount, name='overlay mount'))
+            threads.append(multiprocessing.Process(target=rclone.mount,
+                                                   name='rclone mount'))
+            threads.append(multiprocessing.Process(target=overlay.mount,
+                                                   name='overlay mount'))
 
             while True:
                 for thread in threads:
                     if not thread.is_alive():
-                        print 'Starting %s' % thread.name
+                        logging.info('Starting %s', thread.name)
                         thread.start()
                     thread.join(2.0)
 
@@ -225,29 +229,28 @@ def main():
                     if overlay.has_files():
                         break
 
-                    print 'Overlay filesystem contains no files.'
+                    logging.info('Overlay filesystem contains no files.')
                     retries += 1
 
-                    print 'Retry: %d of %d.  Waiting for %d seconds...' % \
-                        (retries, MAX_OVERLAY_RETRIES, (retries * 5))
+                    logging.info('Retry: %d of %d.  Waiting for %d seconds...',
+                                 retries, MAX_OVERLAY_RETRIES, (retries * 5))
                     time.sleep(retries * 5)
                 else:
                     # Try unmounting the filesystem to start over
-                    print 'Retries exhausted.  Attempting to remount.'
+                    logging.info('Retries exhausted.  Attempting to remount.')
                     kill_and_unmount(threads, overlay, rclone)
                     break
 
                 if retries > 0:
-                    print 'Files detected in the overlay filesystem.'
-                    print 'Resuming normal operation.'
-
-                sys.stdout.flush()
+                    logging.info('Files detected in the overlay filesystem.')
+                    logging.info('Resuming normal operation.')
 
     except KeyboardInterrupt:
         kill_and_unmount(threads, overlay, rclone)
 
 
 if __name__ == '__main__':
+    logging.basicConfig(format='%(asctime)-15s %(levelname)s: %(message)s')
     main()
 
     # Clean exit
