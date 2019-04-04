@@ -127,8 +127,11 @@ class Mounter(object):
 
     def has_files(self):
         """Method to test if files are detected in the mountpoint."""
-        if os.listdir(self.mount_point):
-            return True
+        try:
+            if os.listdir(self.mount_point):
+                return True
+        except OSError as error:
+            logging.warning(error)
         return False
 
 
@@ -198,6 +201,8 @@ def main():
     # Rclone mounter
     rclone = RcloneMounter(remote_drive, local_dir)
 
+    threads = []
+
     # Overlay mounter
     if platform.system() == 'Linux':
         overlay = OverlayMounter(None, overlay_dir, rclone.child_pipe)
@@ -220,7 +225,6 @@ def main():
             logging.info('Attempting to mount rclone and overlay filesystems')
 
             # Prepare the threads
-            threads = []
             threads.append(multiprocessing.Process(target=rclone.mount,
                                                    name='rclone mount'))
             threads.append(multiprocessing.Process(target=overlay.mount,
