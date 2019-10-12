@@ -27,14 +27,14 @@ class Mounter(object):
         if platform.system() == 'Linux':
             self.mount_bin = ['/usr/bin/sudo', '/usr/bin/mount']
             self.umount_bin = ['/usr/bin/sudo', '/usr/bin/umount']
-            self.lsof_bin = '/sbin/lsof'
-            self.rclone_bin = os.path.expanduser('~/bin/rclone')
+            self.lsof_bin = '/usr/bin/lsof'
+            self.rclone_bin = ['/usr/bin/rclone', '--config', '/srv/etc/rclone.conf']
 
         if platform.system() == 'Darwin':
             self.mount_bin = ['/sbin/mount']
             self.umount_bin = ['/usr/sbin/diskutil', 'unmount']
             self.lsof_bin = '/usr/sbin/lsof'
-            self.rclone_bin = '/usr/local/bin/rclone'
+            self.rclone_bin = ['/usr/local/bin/rclone']
 
         self.source = src
         self.mount_point = dst
@@ -140,15 +140,15 @@ class RcloneMounter(Mounter):
 
     def __init__(self, *args, **kwargs):
         super(RcloneMounter, self).__init__(*args, **kwargs)
-        self.set_command([self.rclone_bin,
-                          'mount',
-                          '--read-only',
-                          '--allow-other',
-                          '--no-modtime',
-                          '--dir-cache-time=240m',
-                          '--tpslimit=10',
-                          '--tpslimit-burst=1',
-                          '--buffer-size=1G'])
+        self.set_command(self.rclone_bin + [
+            'mount',
+            '--allow-other',
+            '--read-only',
+            '--no-modtime',
+            '--dir-cache-time=240m',
+            '--tpslimit=10',
+            '--tpslimit-burst=1',
+            '--buffer-size=1G'])
 
         # Append a colon to the source
         self.source += ':'
@@ -168,7 +168,12 @@ class OverlayMounter(Mounter):
 
     def __init__(self, *args, **kwargs):
         super(OverlayMounter, self).__init__(*args, **kwargs)
-        self.set_command(self.mount_bin)
+        self.set_command(self.mount_bin + [
+            '-t',
+            'overlay',
+            'overlay',
+            '-o'
+        ])
 
 
 def kill_and_unmount(threads, overlay, rclone):
@@ -193,10 +198,9 @@ def main():
 
     # Main directories
     remote_drive = 'GoogleDriveCrypt'
-    homedir = os.path.expanduser('~')
-    local_dir = os.path.join(homedir, 'mnt', 'GoogleDriveCrypt')
-    overlay_dir = os.path.join(homedir, 'mnt', 'union')
-    cache_dir = os.path.join(homedir, 'mnt', '.cache')
+    local_dir = os.path.abspath(os.path.join(os.sep, 'mnt', 'GoogleDriveCrypt'))
+    overlay_dir = os.path.abspath(os.path.join(os.sep, 'mnt', 'media'))
+    cache_dir = os.path.abspath(os.path.join(os.sep, 'mnt', '.media.cache'))
 
     # Rclone mounter
     rclone = RcloneMounter(remote_drive, local_dir)
@@ -205,7 +209,9 @@ def main():
 
     # Overlay mounter
     if platform.system() == 'Linux':
-        overlay = OverlayMounter(None, overlay_dir, rclone.child_pipe)
+        work_dir = os.path.abspath(os.path.join(cache_dir, '..', '.overlay.work'))
+        source = "lowerdir=%s,upperdir=%s,workdir=%s" % (local_dir, cache_dir, work_dir)
+        overlay = OverlayMounter(source, overlay_dir, rclone.child_pipe)
 
     elif platform.system() == 'Darwin':
         source = '%s=%s:%s=%s' % (cache_dir, 'RW',
